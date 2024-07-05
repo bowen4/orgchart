@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <style>
+    html {
+      height: 100%;
+    }
+
+    body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #upload {
+      height: 100px;
+      display: flex;
+      background-color: #fff;
+      padding: 20px;
+      box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+      margin-bottom: 10px;
+    }
+
+    #file-upload {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #input-form {
+      margin-right: 40px;
+    }
+
+    #input-form label {
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    #search {
+      width: 400px;
+      margin-bottom: 10px;
+    }
+
+    #input-form input[type="submit"] {
+      background-color: #4CAF50;
+      /* Green background */
+      color: white;
+      /* White text */
+      padding: 2px 6px;
+      /* Top and bottom padding of 12px, left and right padding of 24px */
+      border: none;
+      /* No border */
+      border-radius: 4px;
+      /* Rounded corners */
+      cursor: pointer;
+      /* Cursor changes to pointer to indicate it's clickable */
+      /* Text size */
+      transition: background-color 0.3s;
+      /* Smooth transition for background color change on hover */
+    }
+
+    #input-form input[type="submit"]:hover {
+      background-color: #45a049;
+    }
+
+
+    #download {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      /* Align items to the start of the flex container */
+    }
+
+
+    #download label {
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    #svg-download-button {
+      background-color: #4CAF50;
+      /* Green background */
+      color: white;
+      /* White text */
+      padding: 2px 6px;
+      /* Adjusted padding for consistency */
+      border: none;
+      /* No border */
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      /* Smooth transition for background color change on hover */
+    }
+
+    #png-download-button {
+      background-color: #4CAF50;
+      /* Green background */
+      color: white;
+      /* White text */
+      padding: 2px 6px;
+      /* Adjusted padding for consistency */
+      border: none;
+      /* No border */
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      /* Smooth transition for background color change on hover */
+    }
+
+    #container {
+      overflow: auto;
+      padding: 10px;
+      flex-grow: 1;
+      /* Adjust the second value to change the height of the #upload div */
+    }
+  </style>
+</head>
+
+<body>
+  <div id="upload">
+    <div id="file-upload">
+      <label for="file">Upload CSV</label>
+      <input type="file" id="file" accept=".csv" />
+    </div>
+    <form id="input-form" style="display: none;">
+      <label for="search">Root:</label>
+      <datalist id="search-list">></datalist>
+      <input id="search" autocomplete="on" list="search-list" placeholder="Search..." />
+      <input type="submit" value="Confirm" />
+      <label for="" show-all">Show full tree:</label>
+      <input type="checkbox" id="show-all" name="show-all">
+    </form>
+
+    <div id="download" style="display: none;">
+      <label for="download">Download</label>
+      <button id="svg-download-button">Save as SVG</button>
+      <!--<button id="png-download-button">Save as PNG</button>-->
+    </div>
+  </div>
+  <div id="container"></div>
+
+  <script type="module">
+    import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function downloadSVG() {
+      const svgElement = document.querySelector('svg').cloneNode(true);
+      svgElement.querySelectorAll(".triangle").forEach(triangle => triangle.remove());
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgElement);
+      const blob = new Blob([svgString], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+
+      const downloadLink = document.createElement('a');
+      downloadLink.href = url;
+      downloadLink.download = 'chart.svg';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadPNG() {
+
+      const svg = document.querySelector('svg').cloneNode(true);
+      svg.querySelectorAll(".triangle").forEach(triangle => triangle.remove());
+      svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svg);
+      const blob = new Blob([svgString], { type: "image/svg+xml" });
+
+      const url = URL.createObjectURL(blob);
+
+      // load the SVG blob to a flesh image object
+      const img = new Image();
+      img.addEventListener('load', () => {
+        // draw the image on an ad-hoc canvas
+        const canvas = document.createElement('canvas');
+        const width = 800;
+        const height = 600;
+        canvas.width = width;
+        canvas.height = height;
+        console.log(canvas.width, canvas.height)
+        const context = canvas.getContext('2d');
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        URL.revokeObjectURL(url);
+
+        // trigger a synthetic download operation with a temporary link
+        const a = document.createElement('a');
+        a.download = 'image.png';
+        document.body.appendChild(a);
+        a.href = canvas.toDataURL();
+        a.click();
+        a.remove();
+      });
+      img.addEventListener('error', () => {
+        console.error('Failed to load the image blob');
+      });
+      img.src = url;
+    }
+
+    function truncate(s, n) {
+      return s.length > n ? s.substr(0, n - 1) + "…" : s;
+    }
+
+    function selectDisplayElements(table, display_root, display_all, show_all = false) {
+      if (show_all) {
+        let new_display_all = [display_root]
+        table.forEach(row => {
+          if (new_display_all.includes(row["Reports To"])) {
+            new_display_all.push(row["Unique Identifier"])
+          }
+        })
+        return selectDisplayElements(table, display_root, new_display_all, false)
+      } else {
+        return table
+          .filter(row => display_all.includes(row["Reports To"])
+            || display_all.includes(row["Unique Identifier"]))
+          .map(row => {
+            if (row["Unique Identifier"] === display_root) {
+              return { ...row, "Reports To": null }
+            } else {
+              return row
+            }
+          })
+      }
+    }
+
+    function render(table, display_root, display_all, initial_x = 0, initial_y = 0) {
+      d3.select("svg")
+        .transition()
+        .duration(200)
+        .style("opacity", 0)
+        .remove()
+
+      const showAllCheckbox = document.getElementById('show-all');
+      if (showAllCheckbox.checked) {
+        let new_display_all = [display_root]
+        table.forEach(row => {
+          if (new_display_all.includes(row["Reports To"])) {
+            new_display_all.push(row["Unique Identifier"])
+          }
+        })
+        display_all = new_display_all
+      }
+
+      const display_table = selectDisplayElements(table, display_root, display_all)
+      const next_parent = table.filter(row => row["Unique Identifier"] === display_root)[0]["Reports To"]
+
+      const root = d3.stratify()
+        .id((d) => d["Unique Identifier"])
+        .parentId((d) => d["Reports To"])
+        (display_table)
+
+      // Create visuals
+      const svg = d3.select("#container").append("svg")
+        .attr("width", "100%")
+        .attr("height", "100%")
+        .style("opacity", 0)
+        .style("font-family", "sans-serif");
+
+      const g = svg.append("g")
+        .attr("transform", `translate(${initial_x},${initial_y})`);
+
+      function zoomed(event) {
+        // Apply both the initial translation and the current zoom transformation
+        g.attr("transform", `translate(${initial_x + event.transform.x},${initial_y + event.transform.y}) scale(${event.transform.k})`);
+      }
+
+      svg.call(d3.zoom()
+        .extent([[0, 0], [width, height]])
+        .scaleExtent([0.01, 4])
+        .on("zoom", zoomed));
+
+      // Create the tree layout
+      const tree = d3.tree().nodeSize([230, 120]);
+      tree(root);
+
+
+
+      // Lines between nodes
+      const link = g.selectAll(".link")
+        .data(root.links())
+        .enter().append("path")
+        .attr("class", "link")
+        .attr("fill", "none")
+        .attr("stroke", "black")
+        .attr("d", d => {
+          const halfway = (d.source.y + d.target.y) / 2;
+          return `M${d.source.x},${d.source.y + 50} V${halfway + 15} H${d.target.x} V${d.target.y - 20}`;
+        });
+
+      const node = g.selectAll(".node")
+        .data(root.descendants())
+        .enter().append("g")
+        .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
+        .attr("transform", d => `translate(${d.x},${d.y})`);
+
+      node.append("rect")
+        .attr("width", 200)
+        .attr("height", 70)
+        .attr("transform", "translate(-100, -20)")
+        .attr("fill", "none")
+        .attr("stroke", "black");
+
+      // Labels
+      node.append("text")
+        .attr("x", -90)
+        .attr("dy", 3)
+        .style("text-anchor", "left")
+        .text(d => truncate(d.data["Name"], 23));
+
+      node.append("text")
+        .attr("x", -90)
+        .attr("dy", 20)
+        .style("text-anchor", "left")
+        .style("font-size", "0.8em")
+        .style("font-weight", "700")
+        .text(d => truncate(d.data["Line Detail 1"], 26));
+
+      node.append("text")
+        .attr("x", -90)
+        .attr("dy", 35)
+        .style("text-anchor", "left")
+        .style("font-size", "0.8em")
+        .text(d => truncate(d.data["Organization Name"], 26));
+
+      // Expand/Collapse buttons
+      if (next_parent) {
+        node.each(function (d) {
+          if (d.depth === 0) { // this is the root node
+            d3.select(this).append("path")
+              .attr("class", "triangle")
+              .attr("d", "M8 0 L16 16 L0 16 Z") // This creates a triangle
+              .attr("fill", "#666666") // Set the fill color of the triangle
+              .attr("transform", "translate(-10, -40)")
+              .on("mouseover", function () { d3.select(this).attr("fill", "#4CAF50"); }) // Change the fill color on hover
+              .on("mouseout", function () { d3.select(this).attr("fill", "#666666"); }) // Revert the fill color when the mouse leaves
+              .on("click", function () {
+                render(table, next_parent, display_all.concat(next_parent), width / 2, 50);
+              });
+          }
+        });
+      }
+
+      node.each(function (d) {
+        if ((table.filter(row => row["Reports To"] === d.id).length > 0)
+          && !display_all.includes(d.id)) {
+          d3.select(this).append("path")
+            .attr("class", "triangle")
+            .attr("d", "M0 0 L16 0 L8 16 Z") // This creates a downward facing triangle
+            .attr("fill", "#666666") // Set the fill color of the triangle
+            .attr("transform", "translate(-10, 54)") // This centers the triangle
+            .on("mouseover", function () { d3.select(this).attr("fill", "#4CAF50"); }) // Change the fill color on hover
+            .on("mouseout", function () { d3.select(this).attr("fill", "#666666"); }) // Revert the fill color when the mouse leaves
+            .on("click", function () {
+              render(table, display_root, display_all.concat(d.id), width / 2, 50);
+            });
+        }
+      });
+
+      svg.transition()
+        .duration(600)
+        .style("opacity", 1);
+    }
+
+    document.getElementById("file").addEventListener("change", function (event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        // Process the file
+        const text = e.target.result;
+        const table = d3.csvParse(text);
+        const search_list = document.getElementById('search-list');
+        table.forEach(row => {
+          if (row["Organization Name"]) {
+            row["Organization Name"] = row["Organization Name"].replace(/\s*\([^9]*\)\s*$/, '');
+          }
+        });
+        table.forEach(row => {
+          const option = document.createElement('option');
+          option.value = row["Unique Identifier"];
+          if (row["Organization Name"]) {
+            option.text = row["Name"] + " | " + row["Organization Name"];
+          } else {
+            option.text = row["Name"];
+          }
+          option.label = option.text
+          search_list.appendChild(option);
+        })
+
+
+        document.getElementById('input-form').style.display = 'block';
+
+
+        // Add an event listener for the form submission
+        document.getElementById('input-form').addEventListener('submit', function (event) {
+          event.preventDefault();
+          document.getElementById('download').style.display = 'block';
+          const display_root = document.getElementById('search').value;
+          render(table, display_root, [display_root], width / 2, 50);
+        });
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById("svg-download-button").addEventListener("click", downloadSVG);
+    //document.getElementById("png-download-button").addEventListener("click", downloadPNG);
+  </script>
+</body>
+
+</html>
